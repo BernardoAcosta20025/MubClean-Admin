@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-//import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mubclean_admin/main.dart';
-import 'package:mubclean_admin/request_detail_page.dart'; // NECESARIO
+import 'package:intl/intl.dart'; // Importar intl para formatear fechas
+import 'package:mubclean_admin/main.dart'; // Tu instancia global de supabase
+import 'package:mubclean_admin/request_detail_page.dart';
 
 class RequestsListPage extends StatefulWidget {
   const RequestsListPage({super.key});
@@ -11,26 +11,28 @@ class RequestsListPage extends StatefulWidget {
 }
 
 class _RequestsListPageState extends State<RequestsListPage> {
-  
-  // Stream que escucha cambios en tiempo real en la tabla 'bookings'
+  // Stream que escucha SOLICITUDES NUEVAS
   final _bookingsStream = supabase
       .from('bookings')
       .stream(primaryKey: ['id'])
-      // Nota: Eliminamos el filtro '.eq('status', 'pending')' para ver todas
-      // las solicitudes cotizadas también (para que la app tenga datos).
+      .eq('status', 'pending_quote') // <--- FILTRO CLAVE: Solo las que esperan cotización
       .order('created_at', ascending: false);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         title: const Text("Solicitudes Nuevas"),
         backgroundColor: const Color(0xFF1E1E1E),
+        foregroundColor: Colors.white,
       ),
-      backgroundColor: const Color(0xFF121212), // Fondo oscuro
       body: StreamBuilder<List<Map<String, dynamic>>>(
         stream: _bookingsStream,
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.white)));
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -44,7 +46,7 @@ class _RequestsListPageState extends State<RequestsListPage> {
                 children: [
                   Icon(Icons.check_circle_outline, size: 60, color: Colors.grey),
                   SizedBox(height: 10),
-                  Text("No hay solicitudes pendientes", style: TextStyle(color: Colors.grey)),
+                  Text("Al día: No hay solicitudes pendientes", style: TextStyle(color: Colors.grey)),
                 ],
               ),
             );
@@ -55,8 +57,9 @@ class _RequestsListPageState extends State<RequestsListPage> {
             itemCount: bookings.length,
             itemBuilder: (context, index) {
               final item = bookings[index];
-              final isPending = item['status'] == 'pending';
-              
+              final date = DateTime.parse(item['scheduled_date']);
+              final formattedDate = DateFormat('dd/MM/yyyy').format(date);
+
               return Card(
                 color: const Color(0xFF2C2C2C),
                 margin: const EdgeInsets.only(bottom: 15),
@@ -66,45 +69,38 @@ class _RequestsListPageState extends State<RequestsListPage> {
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: isPending ? Colors.orange.withValues(alpha: 0.1) : Colors.blueGrey.withValues(alpha: 0.1),
+                      color: Colors.orange.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Icon(
-                      isPending ? Icons.cleaning_services : Icons.done_all, 
-                      color: isPending ? Colors.orange : Colors.blueGrey
-                    ),
+                    child: const Icon(Icons.cleaning_services, color: Colors.orange),
                   ),
-                  title: Text(
-                    item['service_type'] ?? 'Servicio',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
+                  title: const Text(
+                    "Solicitud de Cotización", // O podrías poner el nombre del cliente si haces join
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
                   ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 5),
-                      Text(item['details'] ?? 'Sin detalles', style: const TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today, size: 14, color: Colors.blueGrey),
-                          const SizedBox(width: 5),
-                          Text(
-                            _formatDate(item['created_at']),
-                            style: const TextStyle(color: Colors.blueGrey, fontSize: 12),
-                          ),
-                        ],
-                      )
+                      Text(
+                        "📅 $formattedDate - ${item['scheduled_time']}", 
+                        style: const TextStyle(color: Colors.grey)
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        "📍 ${item['address_street']}",
+                        style: const TextStyle(color: Colors.white70, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ],
                   ),
                   trailing: const Icon(Icons.arrow_forward_ios, color: Colors.grey, size: 16),
-                  
-                  // LÍNEA 87: UBICACIÓN CORRECTA DEL ONTAP
                   onTap: () {
-                    // Navegamos y pasamos todos los datos del pedido (item)
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => RequestDetailPage(booking: item),
+                        builder: (context) => RequestDetailPage(bookingId: item['id']), // Pasamos solo el ID
                       ),
                     );
                   },
@@ -115,10 +111,5 @@ class _RequestsListPageState extends State<RequestsListPage> {
         },
       ),
     );
-  }
-
-  String _formatDate(String dateString) {
-    final date = DateTime.parse(dateString);
-    return "${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}";
   }
 }
